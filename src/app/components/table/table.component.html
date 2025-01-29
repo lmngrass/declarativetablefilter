@@ -1,0 +1,62 @@
+<p>table works!</p>
+<button type="button" class="btn btn-primary" (click)="loadTableEvent($event)">
+  Load data
+</button>
+@if (viewModel$ | async; as viewModel) {
+  <div class="row">
+    <div class="col-4">
+      @switch (viewModel.filteredData.state) {
+        @case ("loading") {
+          <div class="alert alert-info">Loading</div>
+        }
+        @case ("success") {
+          <div class="alert alert-success">Success</div>
+        }
+      }
+    </div>
+  </div>
+  <form [formGroup]="filterForm">
+    <div class="row pt-5">
+      <div class="col-12">
+        @if (viewModel.filteredData.state === "success") {
+          <table class="table table-striped p-5">
+            <thead class="thead-dark">
+              <tr>
+                <th scope="col">First</th>
+                <th scope="col">Second</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <input
+                    type="text"
+                    name="filterName"
+                    id="filterName"
+                    formControlName="name"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    name="filterAge"
+                    id="filterAge"
+                    formControlName="age"
+                  />
+                </td>
+              </tr>
+              @for (item of viewModel.filteredData.data; track $index) {
+                <tr>
+                  <td>{{ item.name }}</td>
+                  <td>{{ item.age }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else if (viewModel.filteredData.state === "failure") {
+          Error while loading data
+        }
+      </div>
+    </div>
+  </form>
+}
