@@ -5,7 +5,7 @@
 @if (viewModel$ | async; as viewModel) {
   <div class="row">
     <div class="col-4">
-      @switch (viewModel.filteredAndSortedData.state) {
+      @switch (viewModel.tableData.state) {
         @case ("loading") {
           <div class="alert alert-info">Loading</div>
         }
@@ -18,7 +18,7 @@
   <form [formGroup]="filterForm">
     <div class="row pt-5">
       <div class="col-12 p-5">
-        @if (viewModel.filteredAndSortedData.state === "success") {
+        @if (viewModel.tableData.state === "success") {
           <table class="table table-striped table-bordered">
             <thead class="thead-dark">
               <tr>
@@ -27,7 +27,6 @@
                     type="checkbox"
                     name="selectAllCheckBox"
                     id="selectAllCheckBox"
-                    [checked]="viewModel.selectAllCheckBoxState"
                   />
                 </th>
                 <th scope="col">
@@ -114,16 +113,12 @@
                   />
                 </td>
               </tr>
-              @for (
-                item of viewModel.filteredAndSortedData.data;
-                track $index
-              ) {
+              @for (item of viewModel.tableData.data; track $index) {
                 <tr>
                   <td class="centerTableCell">
                     <input
                       type="checkbox"
                       [checked]="item.checked ? item.checked : false"
-                      (click)="toggleCheckRow(item.id, $event.target!)"
                     />
                   </td>
 
@@ -133,7 +128,7 @@
               }
             </tbody>
           </table>
-        } @else if (viewModel.filteredAndSortedData.state === "failure") {
+        } @else if (viewModel.tableData.state === "failure") {
           Error while loading data
         }
       </div>

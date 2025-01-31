@@ -18,5 +18,10 @@ export interface SortTableaction {
 
 export interface CheckAction {
   state: boolean;
+  /** id of the element
+   * -1 refers to non existent value
+   */
   id: number;
+  /** whether the action is for select all checkbox */
+  isForselectAll: boolean;
 }

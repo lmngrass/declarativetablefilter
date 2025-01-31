@@ -1,4 +1,8 @@
-import { TableData, TableItem } from '../components/table/models/table.model';
+import {
+  SortTableaction,
+  TableData,
+  TableItem,
+} from '../components/table/models/table.model';
 
 export function ifValueIsUndefinedOrNullReturnEmptyString(value: any): string {
   return value === undefined || value === null ? '' : value;
@@ -8,40 +12,32 @@ export function ifValueIsUndefinedOrNullReturnEmptyString(value: any): string {
  * @param value The form data and table data.
  * @returns The filtered table data.
  */
-export function filterAndMap(value: {
-  formData: any;
-  tableData: TableData;
-}): TableData {
-  console.log('filter called');
-  const mapOfValues = new Map(Object.entries(value.formData));
-  const tableData = value.tableData.data;
-  const filterdData: TableItem[] = tableData.filter((tableItem) => {
-    const filterValueForName = String(
-      ifValueIsUndefinedOrNullReturnEmptyString(mapOfValues.get('name')),
-    ).toLowerCase();
-    const filterValueForAge = String(
-      ifValueIsUndefinedOrNullReturnEmptyString(mapOfValues.get('age')),
-    ).toLowerCase();
-    let nameComparison = true;
-    let ageComparison = true;
-    if (filterValueForName) {
-      nameComparison = compareSourceIncludesTarget(
-        tableItem.name,
-        filterValueForName,
-      );
-    }
-    if (filterValueForAge) {
-      ageComparison = compareSourceIncludesTarget(
-        String(tableItem.age),
-        filterValueForAge,
-      );
-    }
-    return nameComparison && ageComparison;
-  });
-  return {
-    data: filterdData,
-    state: 'success',
-  };
+export function filterForTableItem(
+  formData: any,
+  tableItem: TableItem,
+): boolean {
+  const mapOfValues = new Map(Object.entries(formData));
+  const filterValueForName = String(
+    ifValueIsUndefinedOrNullReturnEmptyString(mapOfValues.get('name')),
+  ).toLowerCase();
+  const filterValueForAge = String(
+    ifValueIsUndefinedOrNullReturnEmptyString(mapOfValues.get('age')),
+  ).toLowerCase();
+  let nameComparison = true;
+  let ageComparison = true;
+  if (filterValueForName) {
+    nameComparison = compareSourceIncludesTarget(
+      tableItem.name,
+      filterValueForName,
+    );
+  }
+  if (filterValueForAge) {
+    ageComparison = compareSourceIncludesTarget(
+      String(tableItem.age),
+      filterValueForAge,
+    );
+  }
+  return nameComparison && ageComparison;
 }
 /**
  * Compares if the source string includes the target string, case insensitive.
