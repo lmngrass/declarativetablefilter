@@ -27,6 +27,7 @@
                     type="checkbox"
                     name="selectAllCheckBox"
                     id="selectAllCheckBox"
+                    [checked]="viewModel.selectAllCheckBoxState"
                   />
                 </th>
                 <th scope="col">
@@ -119,6 +120,7 @@
                     <input
                       type="checkbox"
                       [checked]="item.checked ? item.checked : false"
+                      (change)="toggleRowCheckBox($event, item.id, false)"
                     />
                   </td>
 

@@ -8,6 +8,7 @@ import {
   startWith,
   Subject,
   switchMap,
+  tap,
 } from 'rxjs';
 import { GetTableDataService } from '../../services/get-table-data.service';
 import { AsyncPipe, JsonPipe } from '@angular/common';
@@ -46,13 +47,12 @@ export class TableComponent implements OnInit {
   /**
    * Subject to trigger table data load.
    */
-  private loadTable = new Subject<void>();
+  private readonly loadTable = new Subject<void>();
 
   /**
    * Observable for load table action.
    */
   loadTableAction$ = this.loadTable.asObservable();
-
   /**
    * Subject to trigger table sorting.
    */
@@ -66,9 +66,7 @@ export class TableComponent implements OnInit {
   /**
    * Observable for sort table action.
    */
-  sort$: Observable<SortTableaction> = this.sortChanged
-    .asObservable()
-    .pipe(startWith(this.initialSort));
+  sort$ = this.sortChanged.asObservable().pipe(startWith(this.initialSort));
 
   /**
    * Form group for filter inputs.
@@ -79,11 +77,24 @@ export class TableComponent implements OnInit {
   });
 
   filter$ = this.filterForm.valueChanges.pipe(startWith({}));
+
+  toggleRowCheck = new Subject<CheckAction>();
+
+  toggleRow$ = this.toggleRowCheck.asObservable();
+  toggleRowCheckBox(event: Event, id: number, isForSelectAll: boolean) {
+    const state = (event.target as HTMLInputElement).checked;
+    this.toggleRowCheck.next({
+      id: id,
+      state: state,
+      isForselectAll: isForSelectAll,
+    });
+  }
   /**
    * Observable for the view model used in the template.
    */
   readonly viewModel$: Observable<{
     tableData: TableData;
+    selectAllCheckBoxState: boolean;
   }>;
 
   /**
@@ -93,6 +104,10 @@ export class TableComponent implements OnInit {
     switchMap(() => this.getTableService.tableData$),
   );
 
+  selectAllCheckBoxState$: Observable<boolean>;
+  // 0 1 2 3 4 1sec
+  // 0   1   2  2 sec
+  // 0       1  4sec
   /**
    * Constructor for TableComponent.
    * @param getTableService Service to get table data.
@@ -101,22 +116,52 @@ export class TableComponent implements OnInit {
     this.tableData$ = combineLatest([
       this.filter$,
       this.sort$,
+      this.toggleRow$.pipe(
+        startWith({
+          state: false,
+          id: -1,
+          isForselectAll: false,
+        } as CheckAction),
+      ),
       this.tableData$,
     ]).pipe(
-      map(([filters, sortConfig, tableData]) => {
+      tap((value) => console.log(value[3])),
+      map(([filters, sortConfig, toggleRow, tableData]) => {
+        console.log(toggleRow);
         const newData = [...tableData.data]
           .filter((tableItem) => filterForTableItem(filters, tableItem))
           .sort(
             this.sortBy(sortConfig) as (a: TableItem, b: TableItem) => number,
           );
+        const checkedData: TableItem[] = [...newData].map((item) => {
+          if (item.id === toggleRow.id) {
+            if (toggleRow.state) {
+              this.checkedItems.add(toggleRow.id);
+            } else {
+              this.checkedItems.delete(toggleRow.id);
+            }
+            return { ...item, checked: toggleRow.state } as TableItem;
+          }
+          return {
+            ...item,
+            checked: this.checkedItems.has(item.id),
+          } as TableItem;
+        });
         return {
           ...tableData,
-          data: newData,
+          data: checkedData,
         };
+      }),
+      tap((value) => console.log(value)),
+    );
+    this.selectAllCheckBoxState$ = combineLatest([this.tableData$]).pipe(
+      map(([tableData]) => {
+        return tableData.data.every((tableItem) => tableItem.checked);
       }),
     );
     this.viewModel$ = combineLatest({
       tableData: this.tableData$,
+      selectAllCheckBoxState: this.selectAllCheckBoxState$,
     });
   }
   sortBy(sortConfig: SortTableaction) {
