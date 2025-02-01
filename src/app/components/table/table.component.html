@@ -28,6 +28,7 @@
                     name="selectAllCheckBox"
                     id="selectAllCheckBox"
                     [checked]="viewModel.selectAllCheckBoxState"
+                    (change)="toggleRowCheckBox($event, -1, true)"
                   />
                 </th>
                 <th scope="col">

@@ -5,6 +5,7 @@ import {
   debounceTime,
   map,
   Observable,
+  skipWhile,
   startWith,
   Subject,
   switchMap,
@@ -80,7 +81,13 @@ export class TableComponent implements OnInit {
 
   toggleRowCheck = new Subject<CheckAction>();
 
-  toggleRow$ = this.toggleRowCheck.asObservable();
+  toggleRow$ = this.toggleRowCheck.asObservable().pipe(
+    startWith({
+      state: false,
+      id: -1,
+      isForselectAll: false,
+    } as CheckAction),
+  );
   toggleRowCheckBox(event: Event, id: number, isForSelectAll: boolean) {
     const state = (event.target as HTMLInputElement).checked;
     this.toggleRowCheck.next({
@@ -116,13 +123,7 @@ export class TableComponent implements OnInit {
     this.tableData$ = combineLatest([
       this.filter$,
       this.sort$,
-      this.toggleRow$.pipe(
-        startWith({
-          state: false,
-          id: -1,
-          isForselectAll: false,
-        } as CheckAction),
-      ),
+      this.toggleRow$,
       this.tableData$,
     ]).pipe(
       tap((value) => console.log(value[3])),
@@ -133,20 +134,10 @@ export class TableComponent implements OnInit {
           .sort(
             this.sortBy(sortConfig) as (a: TableItem, b: TableItem) => number,
           );
-        const checkedData: TableItem[] = [...newData].map((item) => {
-          if (item.id === toggleRow.id) {
-            if (toggleRow.state) {
-              this.checkedItems.add(toggleRow.id);
-            } else {
-              this.checkedItems.delete(toggleRow.id);
-            }
-            return { ...item, checked: toggleRow.state } as TableItem;
-          }
-          return {
-            ...item,
-            checked: this.checkedItems.has(item.id),
-          } as TableItem;
-        });
+        const checkedData: TableItem[] = this.handleCheckedState(
+          newData,
+          toggleRow,
+        );
         return {
           ...tableData,
           data: checkedData,
@@ -172,7 +163,46 @@ export class TableComponent implements OnInit {
       return sortNumArray(sortConfig.columnKey, isAscending);
     }
   }
-
+  handleCheckedState(tableData: TableItem[], toggleRow: CheckAction) {
+    if (toggleRow.id === -1 && toggleRow.isForselectAll === false) {
+      return [...tableData];
+    } else {
+      if (toggleRow.isForselectAll) {
+        return [...tableData].map((item) => {
+          const state = toggleRow.state;
+          this.handleSetState(toggleRow, item.id);
+          return {
+            ...item,
+            checked: state,
+          };
+        });
+      } else {
+        return this.handleRowStateForIndividualRow(tableData, toggleRow);
+      }
+    }
+  }
+  handleRowStateForIndividualRow(
+    tableData: TableItem[],
+    toggleRow: CheckAction,
+  ) {
+    return [...tableData].map((item) => {
+      if (item.id === toggleRow.id) {
+        this.handleSetState(toggleRow, item.id);
+        return { ...item, checked: toggleRow.state } as TableItem;
+      }
+      return {
+        ...item,
+        checked: this.checkedItems.has(item.id),
+      } as TableItem;
+    });
+  }
+  handleSetState(toggleRow: CheckAction, id: number) {
+    if (toggleRow.state) {
+      this.checkedItems.add(id);
+    } else {
+      this.checkedItems.delete(id);
+    }
+  }
   /**
    * Event handler for sort table action.
    * @param sortAction The action containing sorting details.
