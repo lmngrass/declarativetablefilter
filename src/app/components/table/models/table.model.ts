@@ -24,4 +24,6 @@ export interface CheckAction {
   id: number;
   /** whether the action is for select all checkbox */
   isForselectAll: boolean;
+  /** is intial state , basically are we trying to check after filter and sort is completed */
+  isIntialState?: boolean;
 }

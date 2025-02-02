@@ -4,7 +4,10 @@ import {
   combineLatest,
   debounceTime,
   map,
+  merge,
   Observable,
+  of,
+  shareReplay,
   skipWhile,
   startWith,
   Subject,
@@ -42,7 +45,8 @@ import { filterForTableItem } from '../../shared/utils';
   styleUrl: './table.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TableComponent implements OnInit {
+export class TableComponent {
+  /** stores ids of checked items */
   private checkedItems = new Set<number>();
 
   /**
@@ -59,6 +63,7 @@ export class TableComponent implements OnInit {
    */
   private readonly sortChanged = new Subject<SortTableaction>();
 
+  /** intial sort configuration  */
   initialSort: SortTableaction = {
     columnKey: 'name',
     sortType: 'string',
@@ -77,17 +82,31 @@ export class TableComponent implements OnInit {
     age: new FormControl(),
   });
 
+  /** filter action */
   filter$ = this.filterForm.valueChanges.pipe(startWith({}));
 
-  toggleRowCheck = new Subject<CheckAction>();
+  /**
+   * intial action state for row
+   * which reset everytime filter and sort is applied
+   */
+  initialRowCheckState: CheckAction = {
+    isIntialState: true,
+    id: -1,
+    isForselectAll: true,
+    state: false,
+  };
 
-  toggleRow$ = this.toggleRowCheck.asObservable().pipe(
-    startWith({
-      state: false,
-      id: -1,
-      isForselectAll: false,
-    } as CheckAction),
-  );
+  /** toggle row  */
+  private readonly toggleRowCheck = new Subject<CheckAction>();
+
+  /** exposed toogle row action */
+  toggleRow$ = this.toggleRowCheck.asObservable();
+  /**
+   * toggle Row checkbox event for table data stream
+   * @param event change event
+   * @param id id of element beind changed it is -1 for select all operation rest it will id from data
+   * @param isForSelectAll whether select all check is checked or not
+   */
   toggleRowCheckBox(event: Event, id: number, isForSelectAll: boolean) {
     const state = (event.target as HTMLInputElement).checked;
     this.toggleRowCheck.next({
@@ -110,51 +129,116 @@ export class TableComponent implements OnInit {
   tableData$: Observable<TableData> = this.loadTableAction$.pipe(
     switchMap(() => this.getTableService.tableData$),
   );
-
-  selectAllCheckBoxState$: Observable<boolean>;
-  // 0 1 2 3 4 1sec
-  // 0   1   2  2 sec
-  // 0       1  4sec
   /**
-   * Constructor for TableComponent.
-   * @param getTableService Service to get table data.
+   * Observable for only filtered and sroted data
    */
+  filteredAndSortedData$: Observable<TableData>;
+
+  /**
+   * table data after performing sort ,filter, checked operations
+   */
+  finalTableData$: Observable<TableData>;
+  /**
+   * state for select all checkbox after all the oeprations
+   */
+  selectAllCheckBoxState$: Observable<boolean>;
+
   constructor(private getTableService: GetTableDataService) {
-    this.tableData$ = combineLatest([
+    /** fitlered and sorted stream */
+    this.filteredAndSortedData$ = combineLatest([
       this.filter$,
       this.sort$,
-      this.toggleRow$,
       this.tableData$,
     ]).pipe(
-      tap((value) => console.log(value[3])),
-      map(([filters, sortConfig, toggleRow, tableData]) => {
-        console.log(toggleRow);
+      map(([filters, sortConfig, tableData]) => {
         const newData = [...tableData.data]
           .filter((tableItem) => filterForTableItem(filters, tableItem))
           .sort(
             this.sortBy(sortConfig) as (a: TableItem, b: TableItem) => number,
           );
-        const checkedData: TableItem[] = this.handleCheckedState(
-          newData,
-          toggleRow,
-        );
         return {
           ...tableData,
-          data: checkedData,
+          data: newData,
         };
       }),
       tap((value) => console.log(value)),
+      shareReplay(1),
     );
-    this.selectAllCheckBoxState$ = combineLatest([this.tableData$]).pipe(
-      map(([tableData]) => {
+
+    /** reset action which will emit as soon as table data is changed */
+    const resetAction$: Observable<CheckAction> =
+      this.filteredAndSortedData$.pipe(map(() => this.initialRowCheckState));
+    /** mergign so either of them emits */
+    const mergedAction = merge(this.toggleRow$, resetAction$);
+
+    this.finalTableData$ = combineLatest([
+      mergedAction.pipe(
+        tap((value) => console.log(`merged with ${JSON.stringify(value)} `)),
+      ),
+      this.filteredAndSortedData$,
+    ]).pipe(
+      map(([checkAction, tableData]) => {
+        if (checkAction.isIntialState) {
+          // that means filter was reset or we are at initial state
+          console.log('initial state');
+          // since we got here after clearing filter or doing something
+          // or sort thus we can handle checked method here such that if the set has the data we will
+          // set marked as checked for that here if not we mark false
+          const updatedData = tableData.data.map((item) => ({
+            ...item,
+            checked: this.checkedItems.has(item.id),
+          }));
+          return {
+            ...tableData,
+            data: updatedData,
+          };
+        } else {
+          console.log('existing handling');
+          //here we appropariately handle which stores currently selected ids in ui for both select all and invidual state
+          if (checkAction.id == -1 && !checkAction.isForselectAll) {
+            console.log([tableData]);
+            return { ...tableData };
+          } else {
+            let updatedDataTableData: TableItem[];
+            if (checkAction.isForselectAll) {
+              // handle select all operation here
+              console.log('todo select all operation');
+              // for select all we have to consider two scenarios
+              updatedDataTableData = this.handleRowStateForAllRows(
+                tableData.data,
+                checkAction,
+              );
+            } else {
+              updatedDataTableData = this.handleRowStateForIndividualRow(
+                tableData.data,
+                checkAction,
+              );
+            }
+            return {
+              ...tableData,
+              data: updatedDataTableData,
+            };
+          }
+        }
+      }),
+      shareReplay(1),
+    );
+    // select all checkbox  stream
+    this.selectAllCheckBoxState$ = this.finalTableData$.pipe(
+      map((tableData) => {
         return tableData.data.every((tableItem) => tableItem.checked);
       }),
     );
+    // view model for ui
     this.viewModel$ = combineLatest({
-      tableData: this.tableData$,
+      tableData: this.finalTableData$,
       selectAllCheckBoxState: this.selectAllCheckBoxState$,
     });
   }
+
+  /** handle sorting based on configuration
+   * @param sortConfig  configuration
+   */
   sortBy(sortConfig: SortTableaction) {
     const isAscending = sortConfig.direction === 'ASC';
     if (sortConfig.sortType === 'string') {
@@ -163,32 +247,31 @@ export class TableComponent implements OnInit {
       return sortNumArray(sortConfig.columnKey, isAscending);
     }
   }
-  handleCheckedState(tableData: TableItem[], toggleRow: CheckAction) {
-    if (toggleRow.id === -1 && toggleRow.isForselectAll === false) {
-      return [...tableData];
-    } else {
-      if (toggleRow.isForselectAll) {
-        return [...tableData].map((item) => {
-          const state = toggleRow.state;
-          this.handleSetState(toggleRow, item.id);
-          return {
-            ...item,
-            checked: state,
-          };
-        });
-      } else {
-        return this.handleRowStateForIndividualRow(tableData, toggleRow);
-      }
-    }
+
+  handleRowStateForAllRows(
+    tableData: TableItem[],
+    checkRowAction: CheckAction,
+  ) {
+    const updateData = tableData.map((item) => {
+      this.handleSetState(checkRowAction, item.id);
+      return { ...item, checked: checkRowAction.state };
+    });
+    return [...updateData];
   }
+  /**
+   * Handle check row state and returns modified array
+   * @param tableData tableData
+   * @param toggleRow row configuration
+   * @returns modified tableData after checking that particular id
+   */
   handleRowStateForIndividualRow(
     tableData: TableItem[],
-    toggleRow: CheckAction,
+    checkRowAction: CheckAction,
   ) {
     return [...tableData].map((item) => {
-      if (item.id === toggleRow.id) {
-        this.handleSetState(toggleRow, item.id);
-        return { ...item, checked: toggleRow.state } as TableItem;
+      if (item.id === checkRowAction.id) {
+        this.handleSetState(checkRowAction, item.id);
+        return { ...item, checked: checkRowAction.state } as TableItem;
       }
       return {
         ...item,
@@ -196,8 +279,13 @@ export class TableComponent implements OnInit {
       } as TableItem;
     });
   }
-  handleSetState(toggleRow: CheckAction, id: number) {
-    if (toggleRow.state) {
+  /**
+   * Handles state of set which stores currrent checked id
+   * @param toggleRow check row configuration
+   * @param id id to be checked
+   */
+  handleSetState(checkRowAction: CheckAction, id: number) {
+    if (checkRowAction.state) {
       this.checkedItems.add(id);
     } else {
       this.checkedItems.delete(id);
@@ -220,9 +308,4 @@ export class TableComponent implements OnInit {
     console.log(' load event called');
     this.loadTable.next();
   }
-
-  /**
-   * Lifecycle hook that is called after data-bound properties of a directive are initialized.
-   */
-  ngOnInit(): void {}
 }
